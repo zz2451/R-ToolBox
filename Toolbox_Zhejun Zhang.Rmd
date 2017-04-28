@@ -1,0 +1,195 @@
+---
+title: "Toolbox"
+author: "Zhejun Zhang"
+date: "4/27/2017"
+output: html_document
+---
+# Introduction 
+### Background
+Capital Bikeshare is a bicycle sharing system that serves Washington, D.C. and its surrounding areas. It has more than 350 stations and 3,000 bicycles, all owned by local government and operated in a public-private partnership with Alta Bicycle Share. Opened in September 2010, the system was the largest bike sharing service in the United States until May 2013. Customers can check out a bike for their trip to work, Metro, go shopping, or visiting friends or families. A visiting pass or a membership will give the customer access to any bikes 24 hours a day, 365 days a year at any stations.
+
+### Data 
+
+Original data comes from: https://archive.ics.uci.edu/ml/datasets/Bike+Sharing+Dataset
+
+The dataset we have is from UCI Machine Learning Repository. All the data were generated and collected from the bike usage system record. The original dataset I have contains 17379 data points and 16 variables. However, for this project, I would like to only use the data points for that collected during the winter (December, January, February and March) because it can give me a chance to learn how to clean the data and extract data points that I actually need. Furthermore, the bike usage is highly related to the temperature. Any kind of analysis will be more accurate if I only deal with subset of data for only one particular season. Finally, the winter version of the dataset will have less observations, which is probably easier to analyze and more suitable for this particular project. Sixteen variables include dteday, season, yr, mnth, hr, holiday, weekday, workingday, weathersit, temp, atemp, hum, windspeed, casual, registered and count. Among these 16 variables, season, yr, mnth, holiday, weekday and workingday can be considered as categorical variables, while the rests are continuous variable. The detailed description of variables is as follows: 
+
+```{r}
+library(pastecs)
+library(MASS)
+library(ggplot2)
+df <- read.csv("~/Desktop/Graduate/r programming/toolbox/Zhejun Zhang Winter data.csv", 
+               header=T, row.names = 1 ,sep=",", stringsAsFactors = F)
+##View(df)
+```
+
+### Objectives
+By analyzing this dataset, my objectives are as follows: 
+
+1) predicting the number of rental bikes at a particular time, measuring the optimal number of bikes that should be provided for any particular hours in winter
+
+2) find the most suitable time for bike maintenance in winter
+
+# Data Cleaning 
+First of all, one of the data issue I have is mis-formatted data. Variable “dteday” which indicates the date of the data that extract in year-month-day format. However, this format could not be well processed in my analysis. So it is necessary to change the string format to numeric if possible. Secondly, some of the variables might not be useful toward the problem that I want to solve in my proposal. For example, the variable “instant” which shows the sequence of each data points are not useful when thinking about the question I want to solve for this project. Those variables are not related to my questions and should be removed in order to simplified the data. Finally, there could be invalid data, typos, wrong data types sort of problems in this dataset. So	I excluded variable “dteday”, “yr” and “season” in JMP, and make sure that they will not be used as record and never been used to building model in future projects.
+
+
+```{r}
+df$dteday <- NULL
+df$season <- NULL
+df$yr <- NULL
+data_new <- df
+```
+
+Additional attention should be paid for correlation and interaction, however since the correlation is not significant enough, so I suggest to left these variables unfixed and using better ways such as transformation when doing the analysis in the future. 
+
+```{r}
+cor(data_new)
+```
+
+We can see cnt's distribution here to better help us understand the dataset. There are also some general information available for us to take a look.
+```{r}
+hist(data_new$cnt,
+     main = "Histogram of cnt",
+     xlab = "cnt")
+
+stat.desc(data_new$cnt)
+```
+
+# Data Analysis & Modeling 
+### Four Sub-models
+Multiple Linear Regression is used to build our predictive models of bike counts. MLR provides a fairly good explanation of the variables and the model we built achieves high performance. Instead of doing one linear regression, we decided to split the data into four groups to generate four models depending on if it was a working day or not and depending on the hour of the day. We compared the results of splitting and not splitting and conclude that splitting the data set results in better performance and provides better explanation of the factors. In order to better achieve the objective, we split the data and run regression for each of them.
+
+I also discarded variables casual and registered. 
+They indicate whether the bike renter was a registered user with the company (registered) or whether the bike renter was not registered with the company and was just casually using the bike (casual).  The sum of those values are equal to the total count.
+
+```{r}
+data_scatter <- data_new
+data_new$casual <- NULL
+data_new$registered <- NULL
+data_new$holiday <- NULL
+#data_new[, c('casual', 'registered', 'holiday')] <- NULL
+morning_index <- data_new$workingday == 1 & data_new$hr >=5 & data_new$hr <= 8
+evening_index <- data_new$workingday == 1 & data_new$hr >= 17 & data_new$hr <= 20
+normal_index <- (data_new$workingday == 1) & (!morning_index) & (!evening_index)
+
+data1 <- data_new[morning_index, ]
+data2 <- data_new[evening_index, ]
+data3 <- data_new[normal_index, ]
+data4 <- data_new[data_new$workingday ==0,]
+```
+
+### Scatter Matrix
+I also ran a scatter matrix to check any possible correlation. 
+```{r}
+par(mar=c(2,2,2,2))
+pairs(~.,data=data_scatter, 
+      main="Scatterplot Matrix")
+```
+
+Based on the scatter matrix, there is a significant positive relationship between temp and atemp. They may be highly correlated.
+
+### Box-cox Transformation
+When I first built linear models based on OLS, I found that they are not perfectly normally distributed, the distribution for each model is either positive skewed or negative skewed. In this case, I tried to implement box-cox transformation for response variable count in order to make it normally distributed.
+```{r}
+boxcox(cnt ~ ., data = data_new)
+```
+
+Figure shows that boxcox selects the transformation alpha = 0.25 with a narrow confidence interval, but 0 does not locate in the narrow confidence interval, so we should use transformation: (cnt^0.25-1)/0.25
+
+### Four Linear Models
+Here are Four models:
+```{r}
+# Model1
+data1$cnt <- (data1$cnt^(0.25)-1)/0.25
+lm1 <- lm(cnt ~., data = data1)
+summary(lm1)
+
+# Model2
+data2$cnt <- (data2$cnt^(0.25)-1)/0.25
+lm2 <- lm(cnt ~., data = data2)
+summary(lm2)
+
+# Model3
+data3$cnt <- (data3$cnt^(0.25)-1)/0.25
+lm3 <- lm(cnt ~., data = data3)
+summary(lm3)
+
+# Model4
+data4$cnt <- (data4$cnt^(0.25)-1)/0.25
+lm4 <- lm(cnt ~., data = data4)
+summary(lm4)
+```
+
+Based on our results, we found that the most important factor that affect bike usage is hour. By splitting into four different sub-model, we found that hour do have a linear relation with the variable count. 
+
+1) In model one, a positive parameter of hour indicates that the number of rental bikes increases with hour, which means a heavy usage of bikes may happen during the late morning. 
+Count= [ (-13.2 + (-0.122) x Month +( 3.14) x Hour + (- 0.974) x Weathersit + 10.8 x Atemp) / 4 +1]^4 
+(x means times)
+
+2) In model two, a negative parameter of hour indicates that the number of rental bikes decreases with hour, which means a heavy usage of bikes may happen during the early evening. 
+Count = [ (25.9 + (-0.137) x Month + (-0.900) x Hour + (-0.578) x Weathersit + (11.3) x Temp + (-0.959) x Humidity + (-1.58) x Windspeed ) / 4 + 1]^4 
+(x means times)
+
+3) In model three, a positive parameter of hour indicates that the number of rental bikes decreases with hour, which means bikes more likely to be rented during the afternoon and evening, but less during the early morning and noon. 
+Count = [(2.58 + (0.246) x Hour + (0.098) x Weekday + (-0.218) x Weathersit + (9.43) x Temp + (-2.70) x Humidity) / 4 + 1]^4
+(x means times)
+
+4) In model four, a positive parameter of hour indicates that the number of rental bikes decreases with the hour. However, the parameter of the hour is relatively small compared to those in the working day, which means variable hour has less influence on the number of bike rental. 
+Count=[(4.93 + (- 0.121) x Month + (0.166) x Hour + (0.061) x Weekday + (-0.469) x Weathersit + (35.9) x Temp + (-23.5) x Atemp + (-3.16) x Humidity + (-3.10) x Windspeed ) / 4 + 1]^4
+(x means times)
+
+The results are reasonable as there are no rush hours during the weekend. Instead, temperature and humidity become two important factors since people are more willing to do outdoor activities during the weekend, and good weather is the prerequisite for any outdoor activities.
+
+# Data Visaulization
+
+Here is the scatter plot of bike count and hour using temperature as color indicator
+```{r}
+# Scatter plot
+scatter1 <- ggplot(data_new, aes(x = hr,
+                                y = cnt,
+                                color = temp)) + geom_point() 
+scatter1 + scale_color_gradientn(colours = rainbow(3))+ labs(title = "Scatter plot of bike count and hour/tempreture indicator")
+```
+
+According to this figure, most bikes are rented out on mornings and evenings. Warm weather in winter is suitable for riding a bike. 
+
+Here is the scatter plot of bike count and hour using weather situation as color indicator
+```{r}
+scatter2 <- ggplot(data_new, aes(x = hr,
+                                y = cnt,
+                                color = weathersit,
+                                size=weathersit)) + geom_point()+ labs(title = "Scatter plot of bike count and hour/weather indicator")
+scatter2 
+```
+
+Based on this figure, we can see that more bikes are rented on good weather. Severe weather is a strong indicator for low bike rentals.
+
+Here is the heat map for bike count by weekday and hour
+```{r}
+heat <- ggplot(data_new, aes(x = weekday,
+                             y = hr)) + 
+  geom_tile(aes(fill = cnt))
+heat + scale_fill_gradient2(low="blue", high="red")+ labs(title = "Heat map for bike count by weekday and hour")
+```
+
+The heat map clearly shows time intervals that have high demands, which is a perfect tool for scheduling any maintenance activities. 
+
+# Conclusion
+### Recoomended Actions
+1) Based on our research results, we recommend the Capital Bike Sharing Program to schedule maintenance during the period from late night to early morning (10 pm to 5 am). If they must maintain bikes during daytime, then Tuesday 5 am - 8 am and Wednesday 10 am - 4 pm are appropriate. 
+
+2) To achieve overall efficiency, we also recommend the Capital Bike Sharing Program to modify the number of available bikes by calculating with our four sub-models that can be found in the results section. It is necessary for the program to pay special attention on those ‘peak time’.
+
+3)	For further research and more accurate prediction, we recommend collecting more samples from a much longer period that may cover more accurate data and more information. The two years data is not enough for building an accurate model with low residuals.
+
+4)	Any big events such as national day celebration and presidential inauguration would highly affect the bike usage. Because we cannot predict these big events and add them to our models, we expected to see high residuals of bike count when it happens. We recommended to record any big events that happened in D.C. so we can find the relations between bike usage and those events.
+
+### Model Strength 
+1)	These models are overall significant and accurate since we split them to four sub-models which can represent all four very different time period.  
+2)	We have quantitative outcomes such as equations as our results. We can use the equation to make prediction or draw conclusion. 
+
+### Model Weakness
+1)	Any big events such as national day celebration and presidential inauguration would highly affect the bike usage. Because we cannot predict these big events and add them to our models, we expected to see high residuals of bike count when it happens. 
+2)	The model is overall has a large residual. For further research and more accurate prediction, we recommend collecting more samples from a much longer period that may cover more accurate data and more information.  
+
